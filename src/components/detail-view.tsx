@@ -63,7 +63,7 @@ export function DetailView({ id }: { id: string }) {
       <header className="grid grid-cols-3 items-center border-b border-black/8 px-4 py-4 md:px-8">
         <Link
           href="/"
-          className="font-[family-name:var(--font-geist-pixel)] text-lg tracking-tight text-black transition-opacity hover:opacity-70"
+          className="font-[family-name:var(--font-geist-pixel-square)] text-lg tracking-tight text-black transition-opacity hover:opacity-70"
         >
           spar
         </Link>

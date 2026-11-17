@@ -24,8 +24,9 @@ type ReferencesContextValue = {
 const ReferencesContext = createContext<ReferencesContextValue | null>(null);
 
 export function ReferencesProvider({ children }: { children: ReactNode }) {
-  const [references, setReferences] = useState<DesignReference[]>(SEED_REFERENCES);
-  const [ready, setReady] = useState(false);
+  const [references, setReferences] =
+    useState<DesignReference[]>(SEED_REFERENCES);
+  const [ready, setReady] = useState(true);
   const [, startTransition] = useTransition();
 
   useEffect(() => {

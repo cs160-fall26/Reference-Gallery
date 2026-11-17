@@ -62,7 +62,7 @@ export function LibraryView() {
           aria-hidden
           className="pointer-events-none absolute inset-x-0 bottom-8 z-0 flex justify-center overflow-hidden"
         >
-          <span className="select-none font-[family-name:var(--font-geist-pixel)] text-[18vw] leading-none tracking-tight text-black/[0.06] md:text-[12vw]">
+          <span className="select-none font-[family-name:var(--font-geist-pixel-square)] text-[18vw] leading-none tracking-tight text-black/[0.06] md:text-[12vw]">
             spar
           </span>
         </div>
