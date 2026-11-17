@@ -1,0 +1,187 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { LimeCta } from "@/components/lime-cta";
+import { BoundingBoxOverlay } from "@/components/bounding-box-overlay";
+import { LocationMap } from "@/components/location-map";
+import { useReferences } from "@/components/references-provider";
+
+export function DetailView({ id }: { id: string }) {
+  const { getById, ready } = useReferences();
+  const ref = getById(id);
+  const [metaOpen, setMetaOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 1800);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-full flex-1 items-center justify-center bg-white font-mono text-xs text-black/50">
+        Loading reference…
+      </div>
+    );
+  }
+
+  if (!ref) {
+    return (
+      <div className="flex min-h-full flex-1 flex-col items-center justify-center gap-4 bg-white px-6 text-center">
+        <p className="font-mono text-xs text-black/55">Reference not found.</p>
+        <Link
+          href="/"
+          className="font-mono text-xs underline underline-offset-4"
+        >
+          ← Back to library
+        </Link>
+      </div>
+    );
+  }
+
+  async function copyPrompt() {
+    if (!ref) return;
+    try {
+      await navigator.clipboard.writeText(ref.prompt);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-full flex-1 flex-col bg-white">
+      <header className="grid grid-cols-3 items-center border-b border-black/8 px-4 py-4 md:px-8">
+        <Link
+          href="/"
+          className="font-[family-name:var(--font-geist-pixel)] text-lg tracking-tight text-black transition-opacity hover:opacity-70"
+        >
+          spar
+        </Link>
+        <p className="text-center font-mono text-[10px] tracking-wide text-black/50">
+          Reference
+        </p>
+        <div className="justify-self-end">
+          <Link
+            href="/"
+            className="font-mono text-[10px] tracking-wide text-black/70 underline-offset-4 hover:underline"
+          >
+            Library ←
+          </Link>
+        </div>
+      </header>
+
+      <div className="mx-auto grid w-full max-w-[1400px] flex-1 lg:grid-cols-2">
+        <aside className="flex flex-col gap-8 px-5 py-8 md:px-10 md:py-12">
+          <div className="space-y-2 animate-[spar-rise_0.45s_ease_both]">
+            <h1 className="max-w-md text-2xl leading-tight font-medium tracking-tight md:text-3xl">
+              {ref.title}
+            </h1>
+            <p className="font-mono text-[11px] text-black/45">
+              Captured {ref.capturedAt}
+              {ref.source === "upload" ? " · upload" : ""}
+            </p>
+          </div>
+
+          <section className="space-y-3 animate-[spar-rise_0.55s_ease_both]">
+            <h2 className="font-mono text-[10px] tracking-[0.14em] text-black/45 uppercase">
+              Semantic
+            </h2>
+            <p className="max-w-prose text-sm leading-relaxed text-black/80">
+              {ref.semantic}
+            </p>
+          </section>
+
+          <Collapsible open={metaOpen} onOpenChange={setMetaOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between border-y border-black py-3 text-left">
+              <span className="font-mono text-[11px] tracking-wide">
+                Metadata
+              </span>
+              {metaOpen ? (
+                <ChevronUp className="size-4" />
+              ) : (
+                <ChevronDown className="size-4" />
+              )}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 py-4">
+              <dl className="grid gap-3 font-mono text-[11px]">
+                <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <dt className="text-black/45">Labels</dt>
+                  <dd className="text-black">{ref.labels.join(", ")}</dd>
+                </div>
+                <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <dt className="text-black/45">Source</dt>
+                  <dd className="text-black">{ref.source}</dd>
+                </div>
+                <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <dt className="text-black/45">Box</dt>
+                  <dd className="text-black">
+                    {ref.boundingBox.width.toFixed(2)} ×{" "}
+                    {ref.boundingBox.height.toFixed(2)} @ (
+                    {ref.boundingBox.x.toFixed(2)},{" "}
+                    {ref.boundingBox.y.toFixed(2)})
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <dt className="text-black/45">Coords</dt>
+                  <dd className="text-black">
+                    {ref.location.lat.toFixed(4)}, {ref.location.lng.toFixed(4)}
+                  </dd>
+                </div>
+              </dl>
+            </CollapsibleContent>
+          </Collapsible>
+
+          <Collapsible open={mapOpen} onOpenChange={setMapOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between border-b border-black py-3 text-left">
+              <span className="font-mono text-[11px] tracking-wide">
+                Map · {ref.location.label}
+              </span>
+              {mapOpen ? (
+                <ChevronUp className="size-4" />
+              ) : (
+                <ChevronDown className="size-4" />
+              )}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3 pb-1">
+              <LocationMap location={ref.location} />
+            </CollapsibleContent>
+          </Collapsible>
+
+          <div className="mt-auto flex flex-wrap items-center gap-3 pt-4 animate-[spar-rise_0.65s_ease_both]">
+            <LimeCta onClick={() => void copyPrompt()}>
+              {copied ? "Copied" : "Copy Prompt"}
+            </LimeCta>
+            <Link
+              href="/"
+              className="inline-flex h-10 items-center justify-center rounded-full border border-black bg-transparent px-5 text-sm font-medium transition-colors hover:bg-black hover:text-white"
+            >
+              Back to library
+            </Link>
+          </div>
+        </aside>
+
+        <section className="flex items-center justify-center bg-[#ececec] px-4 py-10 md:px-10 md:py-14">
+          <div className="relative w-full max-w-xl overflow-hidden bg-[#e4e4e4] shadow-none animate-[spar-fade_0.6s_ease_both]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={ref.imageUrl}
+              alt={ref.title}
+              className="block w-full object-contain"
+            />
+            <BoundingBoxOverlay box={ref.boundingBox} />
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
