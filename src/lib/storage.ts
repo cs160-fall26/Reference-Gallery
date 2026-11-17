@@ -1,32 +1,50 @@
 import type { DesignReference } from "@/lib/types";
-import { SEED_REFERENCES } from "@/lib/seed-data";
 
-const STORAGE_KEY = "spar-references-v1";
+// IndexedDB rather than localStorage: a handful of real photos exceeds the
+// ~5 MB localStorage quota.
+const DB_NAME = "spar";
+const DB_VERSION = 1;
+const STORE = "references";
 
-export function loadReferences(): DesignReference[] {
-  if (typeof window === "undefined") return SEED_REFERENCES;
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function loadReferences(): Promise<DesignReference[]> {
+  const db = await openDb();
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return SEED_REFERENCES;
-    const uploaded = JSON.parse(raw) as DesignReference[];
-    if (!Array.isArray(uploaded)) return SEED_REFERENCES;
-    const seedIds = new Set(SEED_REFERENCES.map((r) => r.id));
-    const extras = uploaded.filter((r) => !seedIds.has(r.id));
-    return [...extras, ...SEED_REFERENCES];
-  } catch {
-    return SEED_REFERENCES;
+    const refs = await new Promise<DesignReference[]>((resolve, reject) => {
+      const request = db.transaction(STORE, "readonly").objectStore(STORE).getAll();
+      request.onsuccess = () => resolve(request.result as DesignReference[]);
+      request.onerror = () => reject(request.error);
+    });
+    return refs.sort((a, b) => b.addedAt.localeCompare(a.addedAt));
+  } finally {
+    db.close();
   }
 }
 
-export function persistUploads(refs: DesignReference[]) {
-  if (typeof window === "undefined") return;
-  const uploads = refs.filter((r) => r.source === "upload");
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(uploads));
-}
-
-export function getReferenceById(
-  refs: DesignReference[],
-  id: string,
-): DesignReference | undefined {
-  return refs.find((r) => r.id === id);
+export async function saveReference(ref: DesignReference): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).put(ref);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
 }

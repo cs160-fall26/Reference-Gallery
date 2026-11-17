@@ -6,8 +6,11 @@ Spar is a minimal design-reference library. Upload or browse photos, inspect an 
 
 - **Library** — multi-column square thumbnail grid with Geist Mono header and Geist Pixel wordmark
 - **Detail** — split layout with bounding box overlay, semantic text, collapsible metadata (closed by default), map (open by default)
-- **Upload** — accepts images and runs a **mock** extraction pipeline (lasso box, labels, semantics, prompt) with no API key
-- **Persistence** — uploads stay in `localStorage` for the session/browser; seed references always load
+- **Upload** — choose a photo, then draw a box around the element you want extracted (drag to draw, drag the box to move it, drag a corner to resize it)
+- **Metadata** — capture date, camera, lens, exposure and GPS position are read from the file's EXIF in the browser; the palette is computed from the boxed pixels. A field the file does not carry is left out, never invented
+- **Description** — a vision model on OpenRouter writes the title, labels, semantic write-up and prompt for the boxed element
+- **Map** — the pin sits at the photo's GPS position; a photo without one shows no map
+- **Persistence** — references are stored in the browser's IndexedDB, so they stay on this device and this browser
 
 ## Stack
 
@@ -27,10 +30,21 @@ npm run build
 npm run start
 ```
 
-## OpenRouter later
+## OpenRouter key
 
-Mock extraction lives in `src/lib/extraction.ts`. Swap `mockExtractFromImage` for an OpenRouter vision call when you have a key; keep that file as the single integration point.
+Create `.env.local` in the project root (it is git-ignored):
 
-## Sample data
+```bash
+OPENROUTER_API_KEY=sk-or-...
+# Optional. Any OpenRouter model that accepts images and structured output.
+OPENROUTER_MODEL=google/gemini-4-hydrogen
+```
 
-Twelve seeded references in `public/samples/` with mock labels, prompts, boxes, and lat/lng.
+The key is read only by the server route `src/app/api/extract/route.ts`, which receives the photo and its boxed crop and calls OpenRouter. It never reaches the browser. Without a key, uploads fail with a message saying so.
+
+## Where things live
+
+- `src/lib/photo.ts` — EXIF and GPS reading, downscaling, cropping, palette
+- `src/app/api/extract/route.ts` — the OpenRouter call
+- `src/components/box-selector.tsx` — the bounding box tool
+- `src/lib/storage.ts` — IndexedDB persistence

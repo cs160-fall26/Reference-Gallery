@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -9,28 +9,53 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { BoxSelector } from "@/components/box-selector";
 import { LimeCta } from "@/components/lime-cta";
-import { mockExtractFromImage } from "@/lib/extraction";
 import { useReferences } from "@/components/references-provider";
-import type { DesignReference } from "@/lib/types";
+import { requestExtraction } from "@/lib/extraction";
+import { formatCapturedAt, formatCoordinates } from "@/lib/format";
+import {
+  buildMetadata,
+  cropToDataUrl,
+  dominantColors,
+  preparePhoto,
+  readPhotoFacts,
+  type PhotoFacts,
+  type PreparedPhoto,
+} from "@/lib/photo";
+import type { BoundingBox, DesignReference } from "@/lib/types";
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
+type Draft = {
+  file: File;
+  photo: PreparedPhoto;
+  facts: PhotoFacts;
+};
+
+const WHOLE_PHOTO: BoundingBox = { x: 0, y: 0, width: 1, height: 1 };
 
 export function UploadDialog() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [box, setBox] = useState<BoundingBox | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [, startTransition] = useTransition();
+  const [busy, setBusy] = useState<"reading" | "extracting" | null>(null);
   const { addReference } = useReferences();
   const router = useRouter();
+
+  function reset() {
+    setDraft(null);
+    setBox(null);
+    setError(null);
+    setBusy(null);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (busy === "extracting") return;
+    setOpen(next);
+    if (!next) reset();
+  }
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -39,33 +64,63 @@ export function UploadDialog() {
       return;
     }
     setError(null);
-    setBusy(true);
+    setBusy("reading");
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      const extracted = await mockExtractFromImage(file.name, dataUrl);
+      const [photo, facts] = await Promise.all([
+        preparePhoto(file),
+        readPhotoFacts(file),
+      ]);
+      setDraft({ file, photo, facts });
+      setBox(null);
+    } catch {
+      setError(
+        "This browser could not open that image. Try a JPG, PNG or WEBP file.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleExtract() {
+    if (!draft || !box) return;
+    setError(null);
+    setBusy("extracting");
+    try {
+      const { file, photo, facts } = draft;
+      const extracted = await requestExtraction({
+        image: photo.dataUrl,
+        crop: cropToDataUrl(photo, box),
+        box,
+      });
       const ref: DesignReference = {
         id: `upload-${Date.now()}`,
         title: extracted.title,
-        imageUrl: dataUrl,
+        imageUrl: photo.dataUrl,
         labels: extracted.labels,
         semantic: extracted.semantic,
         prompt: extracted.prompt,
-        boundingBox: extracted.boundingBox,
-        location: extracted.location,
-        capturedAt: new Date().toISOString().slice(0, 10),
-        source: "upload",
+        boundingBox: box,
+        location: facts.location,
+        capturedAt: facts.capturedAt,
+        addedAt: new Date().toISOString(),
+        metadata: buildMetadata(file, photo, facts, dominantColors(photo, box)),
+        model: extracted.model,
       };
-      startTransition(() => {
-        addReference(ref);
-        setOpen(false);
-        setBusy(false);
-        router.push(`/r/${ref.id}`);
-      });
-    } catch {
-      setError("Could not process that image. Try another file.");
-      setBusy(false);
+      await addReference(ref);
+      setOpen(false);
+      reset();
+      router.push(`/r/${ref.id}`);
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.message
+          ? cause.message
+          : "Extraction failed. Try again.",
+      );
+      setBusy(null);
     }
   }
+
+  const extracting = busy === "extracting";
 
   return (
     <>
@@ -76,16 +131,18 @@ export function UploadDialog() {
         Upload
       </LimeCta>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="gap-5 rounded-none border-black/10 sm:max-w-md">
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent
+          className={`max-h-[92vh] gap-5 overflow-y-auto rounded-none border-black/10 ${draft ? "sm:max-w-2xl" : "sm:max-w-md"}`}
+        >
           <DialogHeader>
             <DialogTitle className="font-sans text-xl">
-              Capture a reference
+              {draft ? "Box the element" : "Capture a reference"}
             </DialogTitle>
             <DialogDescription className="font-mono text-xs text-black/55">
-              Upload a photo. Spar invents a lasso region, labels, and a
-              copyable generative prompt offline (mock extraction — plug
-              OpenRouter later).
+              {draft
+                ? "Drag on the photo to draw a box around what you want extracted. Drag the box to move it, or a corner to resize it."
+                : "Upload a photo, box the element you want, and Spar reads the file’s metadata and location and writes a description and prompt for it."}
             </DialogDescription>
           </DialogHeader>
 
@@ -97,25 +154,95 @@ export function UploadDialog() {
             onChange={(e) => void handleFile(e.target.files?.[0])}
           />
 
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => inputRef.current?.click()}
-            className="flex h-40 w-full flex-col items-center justify-center gap-2 border border-dashed border-black/25 bg-[#f6f6f6] text-sm transition-colors hover:bg-[#efefef] disabled:opacity-60"
-          >
-            {busy ? (
-              <span className="font-mono text-xs tracking-wide">
-                Extracting…
-              </span>
-            ) : (
-              <>
-                <span>Drop or choose an image</span>
-                <span className="font-mono text-[10px] text-black/45">
-                  JPG · PNG · WEBP
+          {draft ? (
+            <>
+              <BoxSelector
+                src={draft.photo.dataUrl}
+                width={draft.photo.canvas.width}
+                height={draft.photo.canvas.height}
+                box={box}
+                onChange={setBox}
+                disabled={extracting}
+              />
+
+              <dl className="grid gap-1 font-mono text-[11px] text-black/60">
+                <div className="flex gap-2">
+                  <dt className="w-16 shrink-0 text-black/40">Location</dt>
+                  <dd>
+                    {draft.facts.location
+                      ? formatCoordinates(draft.facts.location)
+                      : "No GPS position in this file"}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-16 shrink-0 text-black/40">Taken</dt>
+                  <dd>
+                    {draft.facts.capturedAt
+                      ? formatCapturedAt(draft.facts.capturedAt)
+                      : "No capture date in this file"}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <LimeCta
+                  onClick={() => void handleExtract()}
+                  disabled={!box || extracting}
+                >
+                  {extracting ? "Extracting…" : "Extract"}
+                </LimeCta>
+                <button
+                  type="button"
+                  disabled={extracting}
+                  onClick={() => setBox(WHOLE_PHOTO)}
+                  className="font-mono text-[11px] underline underline-offset-4 disabled:opacity-40"
+                >
+                  Use whole photo
+                </button>
+                <button
+                  type="button"
+                  disabled={extracting}
+                  onClick={() => {
+                    reset();
+                    inputRef.current?.click();
+                  }}
+                  className="font-mono text-[11px] underline underline-offset-4 disabled:opacity-40"
+                >
+                  Choose another
+                </button>
+                {!box ? (
+                  <span className="font-mono text-[11px] text-black/45">
+                    Draw a box to continue.
+                  </span>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy === "reading"}
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                void handleFile(e.dataTransfer.files?.[0]);
+              }}
+              className="flex h-40 w-full flex-col items-center justify-center gap-2 border border-dashed border-black/25 bg-[#f6f6f6] text-sm transition-colors hover:bg-[#efefef] disabled:opacity-60"
+            >
+              {busy === "reading" ? (
+                <span className="font-mono text-xs tracking-wide">
+                  Reading photo…
                 </span>
-              </>
-            )}
-          </button>
+              ) : (
+                <>
+                  <span>Drop or choose an image</span>
+                  <span className="font-mono text-[10px] text-black/45">
+                    JPG · PNG · WEBP
+                  </span>
+                </>
+              )}
+            </button>
+          )}
 
           {error ? (
             <p className="font-mono text-xs text-red-600" role="alert">

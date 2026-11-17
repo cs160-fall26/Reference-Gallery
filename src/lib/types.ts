@@ -9,7 +9,26 @@ export type BoundingBox = {
 export type GeoPoint = {
   lat: number;
   lng: number;
-  label: string;
+  /** Metres above sea level, when the camera recorded it. */
+  altitude?: number;
+};
+
+/** Facts read from the file itself; a field is absent when the file does not carry it. */
+export type ImageMetadata = {
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  width: number;
+  height: number;
+  camera?: string;
+  lens?: string;
+  focalLength?: string;
+  aperture?: string;
+  shutter?: string;
+  iso?: number;
+  software?: string;
+  /** Dominant colours of the boxed region, as hex. */
+  palette: string[];
 };
 
 export type DesignReference = {
@@ -20,7 +39,12 @@ export type DesignReference = {
   semantic: string;
   prompt: string;
   boundingBox: BoundingBox;
-  location: GeoPoint;
-  capturedAt: string;
-  source: "seed" | "upload";
+  /** Null when the photo carries no GPS position. */
+  location: GeoPoint | null;
+  /** ISO timestamp from the camera, or null when the file has none. */
+  capturedAt: string | null;
+  addedAt: string;
+  metadata: ImageMetadata;
+  /** Vision model that wrote the title, labels, description and prompt. */
+  model: string;
 };

@@ -17,7 +17,7 @@ export function LocationMapInner({ location }: { location: GeoPoint }) {
     <div className="h-48 w-full overflow-hidden bg-[#ececec] [&_.leaflet-container]:h-full [&_.leaflet-container]:w-full [&_.leaflet-control-attribution]:text-[9px]">
       <MapContainer
         center={[location.lat, location.lng]}
-        zoom={12}
+        zoom={14}
         scrollWheelZoom={false}
         dragging
         zoomControl={false}

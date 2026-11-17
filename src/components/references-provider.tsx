@@ -7,41 +7,45 @@ import {
   useEffect,
   useMemo,
   useState,
-  useTransition,
   type ReactNode,
 } from "react";
 import type { DesignReference } from "@/lib/types";
-import { SEED_REFERENCES } from "@/lib/seed-data";
-import { loadReferences, persistUploads } from "@/lib/storage";
+import { loadReferences, saveReference } from "@/lib/storage";
 
 type ReferencesContextValue = {
   references: DesignReference[];
   ready: boolean;
-  addReference: (ref: DesignReference) => void;
+  /** Resolves once the reference is stored; rejects if the browser refuses it. */
+  addReference: (ref: DesignReference) => Promise<void>;
   getById: (id: string) => DesignReference | undefined;
 };
 
 const ReferencesContext = createContext<ReferencesContextValue | null>(null);
 
 export function ReferencesProvider({ children }: { children: ReactNode }) {
-  const [references, setReferences] =
-    useState<DesignReference[]>(SEED_REFERENCES);
-  const [ready, setReady] = useState(true);
-  const [, startTransition] = useTransition();
+  const [references, setReferences] = useState<DesignReference[]>([]);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    startTransition(() => {
-      setReferences(loadReferences());
-      setReady(true);
-    });
+    let cancelled = false;
+    loadReferences()
+      .then((refs) => {
+        if (!cancelled) setReferences(refs);
+      })
+      .catch(() => {
+        // Storage unavailable (e.g. private mode): start with an empty library.
+      })
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const addReference = useCallback((ref: DesignReference) => {
-    setReferences((prev) => {
-      const next = [ref, ...prev.filter((r) => r.id !== ref.id)];
-      persistUploads(next);
-      return next;
-    });
+  const addReference = useCallback(async (ref: DesignReference) => {
+    await saveReference(ref);
+    setReferences((prev) => [ref, ...prev.filter((r) => r.id !== ref.id)]);
   }, []);
 
   const getById = useCallback(

@@ -30,5 +30,6 @@ export function LocationMap({ location }: LocationMapProps) {
     );
   }
 
-  return <MapView location={location} />;
+  // Keyed so the map recentres when a different reference is shown.
+  return <MapView key={`${location.lat},${location.lng}`} location={location} />;
 }

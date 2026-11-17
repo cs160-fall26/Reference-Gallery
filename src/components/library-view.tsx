@@ -16,7 +16,9 @@ export function LibraryView() {
           <br />
           Photograph, lasso, label, and prompt any detail.
           <br />
-          {ready ? `${count} references` : "Loading…"}
+          {ready
+            ? `${count} ${count === 1 ? "reference" : "references"}`
+            : "Loading…"}
         </p>
       </header>
 
@@ -72,7 +74,7 @@ export function LibraryView() {
         <div className="mx-auto flex max-w-[1400px] flex-col gap-2 font-mono text-[10px] tracking-wide text-black/55 sm:flex-row sm:justify-between">
           <span>Spar</span>
           <span>Capture · Extract · Prompt</span>
-          <span>Offline mock extraction</span>
+          <span>EXIF metadata · vision description</span>
           <span>© 2026</span>
         </div>
       </footer>

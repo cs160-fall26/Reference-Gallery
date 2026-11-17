@@ -12,6 +12,53 @@ import { LimeCta } from "@/components/lime-cta";
 import { BoundingBoxOverlay } from "@/components/bounding-box-overlay";
 import { LocationMap } from "@/components/location-map";
 import { useReferences } from "@/components/references-provider";
+import {
+  formatBytes,
+  formatCapturedAt,
+  formatCoordinates,
+  formatDate,
+} from "@/lib/format";
+import type { DesignReference } from "@/lib/types";
+
+/** Only rows the file or the model actually supplied. */
+function metadataRows(ref: DesignReference): [string, string][] {
+  const { metadata, boundingBox: box, location } = ref;
+  const percent = (n: number) => `${Math.round(n * 100)}%`;
+  const rows: [string, string | undefined][] = [
+    ["Labels", ref.labels.join(", ")],
+    ["File", `${metadata.fileName} · ${formatBytes(metadata.fileSize)}`],
+    ["Format", metadata.fileType || undefined],
+    ["Dimensions", `${metadata.width} × ${metadata.height} px`],
+    ["Captured", ref.capturedAt ? formatCapturedAt(ref.capturedAt) : undefined],
+    ["Camera", metadata.camera],
+    ["Lens", metadata.lens],
+    [
+      "Exposure",
+      [
+        metadata.focalLength,
+        metadata.aperture,
+        metadata.shutter,
+        metadata.iso !== undefined ? `ISO ${metadata.iso}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" · ") || undefined,
+    ],
+    ["Software", metadata.software],
+    [
+      "Box",
+      `${percent(box.width)} × ${percent(box.height)} at ${percent(box.x)}, ${percent(box.y)}`,
+    ],
+    ["Coords", location ? formatCoordinates(location) : undefined],
+    [
+      "Altitude",
+      location?.altitude !== undefined
+        ? `${Math.round(location.altitude)} m`
+        : undefined,
+    ],
+    ["Described by", ref.model],
+  ];
+  return rows.filter((row): row is [string, string] => Boolean(row[1]));
+}
 
 export function DetailView({ id }: { id: string }) {
   const { getById, ready } = useReferences();
@@ -87,8 +134,9 @@ export function DetailView({ id }: { id: string }) {
               {ref.title}
             </h1>
             <p className="font-mono text-[11px] text-black/45">
-              Captured {ref.capturedAt}
-              {ref.source === "upload" ? " · upload" : ""}
+              {ref.capturedAt
+                ? `Captured ${formatCapturedAt(ref.capturedAt)}`
+                : `Added ${formatDate(ref.addedAt)} · no capture date in file`}
             </p>
           </div>
 
@@ -114,29 +162,29 @@ export function DetailView({ id }: { id: string }) {
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 py-4">
               <dl className="grid gap-3 font-mono text-[11px]">
-                <div className="grid grid-cols-[7rem_1fr] gap-2">
-                  <dt className="text-black/45">Labels</dt>
-                  <dd className="text-black">{ref.labels.join(", ")}</dd>
-                </div>
-                <div className="grid grid-cols-[7rem_1fr] gap-2">
-                  <dt className="text-black/45">Source</dt>
-                  <dd className="text-black">{ref.source}</dd>
-                </div>
-                <div className="grid grid-cols-[7rem_1fr] gap-2">
-                  <dt className="text-black/45">Box</dt>
-                  <dd className="text-black">
-                    {ref.boundingBox.width.toFixed(2)} ×{" "}
-                    {ref.boundingBox.height.toFixed(2)} @ (
-                    {ref.boundingBox.x.toFixed(2)},{" "}
-                    {ref.boundingBox.y.toFixed(2)})
-                  </dd>
-                </div>
-                <div className="grid grid-cols-[7rem_1fr] gap-2">
-                  <dt className="text-black/45">Coords</dt>
-                  <dd className="text-black">
-                    {ref.location.lat.toFixed(4)}, {ref.location.lng.toFixed(4)}
-                  </dd>
-                </div>
+                {metadataRows(ref).map(([label, value]) => (
+                  <div key={label} className="grid grid-cols-[7rem_1fr] gap-2">
+                    <dt className="text-black/45">{label}</dt>
+                    <dd className="break-words text-black">{value}</dd>
+                  </div>
+                ))}
+                {ref.metadata.palette.length > 0 ? (
+                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                    <dt className="text-black/45">Palette</dt>
+                    <dd className="flex flex-wrap gap-x-3 gap-y-1 text-black">
+                      {ref.metadata.palette.map((hex) => (
+                        <span key={hex} className="inline-flex items-center gap-1">
+                          <span
+                            aria-hidden
+                            className="size-3 border border-black/15"
+                            style={{ backgroundColor: hex }}
+                          />
+                          {hex}
+                        </span>
+                      ))}
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
             </CollapsibleContent>
           </Collapsible>
@@ -144,7 +192,10 @@ export function DetailView({ id }: { id: string }) {
           <Collapsible open={mapOpen} onOpenChange={setMapOpen}>
             <CollapsibleTrigger className="flex w-full items-center justify-between border-b border-black py-3 text-left">
               <span className="font-mono text-[11px] tracking-wide">
-                Map · {ref.location.label}
+                Map ·{" "}
+                {ref.location
+                  ? formatCoordinates(ref.location)
+                  : "no location in file"}
               </span>
               {mapOpen ? (
                 <ChevronUp className="size-4" />
@@ -153,7 +204,16 @@ export function DetailView({ id }: { id: string }) {
               )}
             </CollapsibleTrigger>
             <CollapsibleContent className="pt-3 pb-1">
-              <LocationMap location={ref.location} />
+              {ref.location ? (
+                <LocationMap location={ref.location} />
+              ) : (
+                <p className="bg-[#f6f6f6] px-4 py-6 font-mono text-[11px] leading-relaxed text-black/55">
+                  This photo carries no GPS position, so there is nothing to
+                  place on the map. Photos keep their location when they come
+                  straight from the camera or phone; many messaging and social
+                  apps strip it.
+                </p>
+              )}
             </CollapsibleContent>
           </Collapsible>
 
